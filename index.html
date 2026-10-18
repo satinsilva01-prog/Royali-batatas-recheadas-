@@ -215,7 +215,7 @@ function royaliEnsureChatUI(orderId){
 }
 async function royaliSendCustomerMessage(orderId){const input=document.getElementById('royaliChatInput'),st=document.getElementById('royaliChatStatus');if(!input)return;const text=input.value.trim();if(!text)return;if(text.length>1000){if(st)st.textContent='A mensagem deve ter até 1.000 caracteres.';return;}try{const user=royaliAuth.currentUser;if(!user||user.isAnonymous)throw new Error('Entre na sua conta para enviar mensagens.');await addDoc(collection(royaliDb,'pedidos',orderId,'mensagens'),{role:'customer',customerUid:user.uid,text:text.slice(0,1000),createdAt:serverTimestamp()});input.value='';if(st)st.textContent='Mensagem enviada.';}catch(e){console.error(e);if(st)st.textContent='Não foi possível enviar. Confira sua conexão e tente novamente.'}}
 window.royaliOpenOrderChat=async(orderId)=>{try{if(!royaliAuth.currentUser||royaliAuth.currentUser.isAnonymous){royaliCustomerAuthStatus('Entre na sua conta para abrir a conversa do pedido.');return;}royaliEnsureChatUI(orderId)}catch(e){console.error('Chat do pedido indisponível:',e)}};
-onAuthStateChanged(royaliAuth,user=>{if(user){const oldOrder=localStorage.getItem('royaliLastOrderId');if(oldOrder)royaliEnsureChatUI(oldOrder);}});
+onAuthStateChanged(royaliAuth,user=>{window.royaliSetCheckoutAuth?.(!!(user&&!user.isAnonymous));document.body.dataset.royaliAuthenticated=String(!!(user&&!user.isAnonymous));if(user&&!user.isAnonymous){const oldOrder=localStorage.getItem('royaliLastOrderId');if(oldOrder)royaliEnsureChatUI(oldOrder);}});
 
 const royaliCustomerAuthStatus=(msg)=>{const el=document.getElementById('royaliCustomerAuthStatus');if(el)el.textContent=msg;};
 function royaliCustomerAddressFromForm(){const get=id=>document.getElementById(id)?.value.trim()||'';const a={label:get('custAddressLabel')||'Casa',cep:get('custCep'),street:get('custStreet'),number:get('custNumber'),neighborhood:get('custNeighborhood'),city:get('custCity'),state:get('custState').toUpperCase(),complement:get('custComplement'),reference:get('custReference')};a.fullAddress=[a.street,a.number,a.neighborhood,[a.city,a.state].filter(Boolean).join(' - '),a.complement,a.reference,a.cep].filter(Boolean).join(', ');return a;}
@@ -250,4 +250,57 @@ window.royaliCreateOrder=async(payload)=>{
  return result.data;
 };
 </script>
+
+<style>
+/* Fluxo simplificado de cadastro e finalização */
+.royali-checkout-gate{border:1px solid #eadfce;background:#fffaf3;border-radius:16px;padding:22px 18px;text-align:center;margin:4px 0 16px}
+.royali-checkout-gate h3{margin:0 0 8px;color:#35291f}.royali-checkout-gate p{margin:0 0 16px;color:#75695d;font-size:14px;line-height:1.5}
+.royali-gate-actions{display:grid;grid-template-columns:1fr 1fr;gap:10px}.royali-register-overlay{z-index:10050}.royali-register-overlay .sheet{max-height:90vh;overflow:auto;width:min(620px,calc(100% - 24px))}
+.royali-register-overlay .customer-form-section{margin:0 0 14px;padding:14px;border:1px solid #eee2cf;border-radius:12px;background:#fff}
+.royali-register-overlay .customer-form-section h4{margin-top:0}.royali-auth-mode-note{font-size:13px;color:#786c60;margin:0 0 12px}
+@media(max-width:480px){.royali-gate-actions{grid-template-columns:1fr}.royali-register-overlay .sheet{padding:14px}}
+</style>
+<div class="overlay royali-register-overlay" id="royaliRegisterOverlay" onclick="overlayClose(event,'royaliRegisterOverlay')" aria-hidden="true">
+ <section class="sheet" role="dialog" aria-modal="true" aria-labelledby="royaliRegisterTitle">
+  <div class="sheet-head"><h2 id="royaliRegisterTitle">Cadastro do cliente</h2><button class="close" type="button" onclick="closeOverlay('royaliRegisterOverlay')" aria-label="Fechar">×</button></div>
+  <p class="royali-auth-mode-note" id="royaliRegisterIntro">Preencha seus dados em um único formulário. Depois, entre para finalizar o pedido.</p>
+  <div id="royaliRegisterFormHost"></div>
+ </section>
+</div>
+<script>
+(function(){
+ const checkout=document.getElementById('checkoutOverlay');
+ const card=checkout?.querySelector('.customer-form-card');
+ if(!checkout||!card)return;
+ const sections=card.querySelectorAll('.customer-form-section');
+ if(sections.length<3)return;
+ const gate=document.createElement('div');gate.className='royali-checkout-gate';gate.id='royaliCheckoutGate';gate.innerHTML=`<h3>Para finalizar seu pedido</h3><p>Cadastre-se para salvar seus dados ou faça login se já tem uma conta.</p><div class="royali-gate-actions"><button class="primary" type="button" onclick="window.royaliOpenCustomerModal?.('register')">Cadastrar</button><button class="secondary" type="button" onclick="window.royaliOpenCustomerModal?.('login')">Já tenho cadastro · Entrar</button></div><button class="secondary" type="button" style="width:100%;margin-top:10px" onclick="window.royaliCustomerGoogle?.()">Continuar com Google</button><p class="hint" style="margin:10px 0 0">Se escolher Google, complete nome e WhatsApp no formulário que será aberto.</p>`;
+ card.parentNode.insertBefore(gate,card);
+ const authSection=sections[0],profileSection=sections[1],orderSection=sections[2];
+ const host=document.getElementById('royaliRegisterFormHost');
+ if(host){host.appendChild(authSection);host.appendChild(profileSection);}
+ const cardTitle=card.querySelector('h3');if(cardTitle)cardTitle.style.display='none';
+ card.style.background='transparent';card.style.border='0';card.style.padding='0';
+ orderSection.style.display='none';
+ const saveBtn=profileSection.querySelector('button[onclick*="royaliSaveCustomerDetails"]');if(saveBtn)saveBtn.textContent='Salvar cadastro';
+ window.royaliOpenCustomerModal=function(mode){
+   const overlay=document.getElementById('royaliRegisterOverlay');if(!overlay)return;
+   const title=document.getElementById('royaliRegisterTitle'),intro=document.getElementById('royaliRegisterIntro');
+   if(title)title.textContent=mode==='login'?'Entrar na sua conta':'Cadastro do cliente';
+   if(intro)intro.textContent=mode==='login'?'Entre com seu e-mail e senha. Se ainda não tem conta, escolha “Criar conta”.':'Preencha seus dados em um único formulário. A senha será usada para acessar seu cadastro depois.';
+   overlay.classList.add('open');overlay.setAttribute('aria-hidden','false');document.body.style.overflow='hidden';
+   const email=document.getElementById('customerEmail');if(email)email.focus({preventScroll:true});
+ };
+ window.royaliSetCheckoutAuth=function(isLogged){
+   gate.style.display=isLogged?'none':'block';
+   orderSection.style.display=isLogged?'block':'none';
+   if(isLogged){const o=document.getElementById('royaliRegisterOverlay');o?.classList.remove('open');o?.setAttribute('aria-hidden','true');if(!document.querySelector('.overlay.open'))document.body.style.overflow='';}
+ };
+ window.royaliSetCheckoutAuth(false);
+ // Keep checkout details private until the customer has authenticated.
+ const originalCheckout=window.checkout;
+ if(typeof originalCheckout==='function')window.checkout=function(){originalCheckout();window.royaliSetCheckoutAuth(!!document.body.dataset.royaliAuthenticated);};
+})();
+</script>
+
 </body></html>
