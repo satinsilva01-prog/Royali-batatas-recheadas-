@@ -116,15 +116,16 @@ function checkout(){if(!cart.length){toast('Adicione um produto antes de continu
  if(!name||!phone){toast('Informe seu nome e WhatsApp para registrar o pedido.');return}
  if(fulfillment==='Entrega'&&!address){toast('Informe o endereço de entrega.');return}
  if(timing==='scheduled'&&(!scheduledDate||!scheduledTime)){toast('Escolha a data e o horário do agendamento.');return}
- const items=cart.map(i=>({productId:String(i.id),name:String(i.name),size:String(i.size),unitPrice:Number(i.price),quantity:Number(i.qty),note:String(i.note||''),lineTotal:Number(i.price)*Number(i.qty)}));
+ const items=[];let priceChanged=false;for(const i of cart){const p=products.find(x=>String(x.id)===String(i.id));if(!p||p.active===false){toast('Um dos produtos da sacola não está mais disponível. Remova-o e confira o cardápio.');return;}const raw=p.prices&&p.prices[String(i.size)];if(raw===null||raw===undefined||raw===''||!Number.isFinite(Number(raw))){toast('Um dos tamanhos da sacola está indisponível. Remova-o e escolha outro tamanho.');return;}const unitPrice=Number(raw);if(Math.abs(unitPrice-Number(i.price))>0.001)priceChanged=true;i.price=unitPrice;i.name=p.name;i.image=p.image;const quantity=Math.max(1,Math.min(99,Number(i.qty)||1));items.push({productId:String(p.id),name:String(p.name),size:String(i.size),unitPrice,quantity,note:String(i.note||''),lineTotal:Math.round(unitPrice*quantity*100)/100});}if(priceChanged){updateCart();if(!confirm('Os preços foram atualizados desde que você colocou os itens na sacola. O total foi recalculado. Deseja continuar com o pedido?'))return;}
  const total=items.reduce((sum,i)=>sum+i.lineTotal,0);
  const payload={customer:{name,phone},fulfillment,address,payment,notes,timing,scheduledDate,scheduledTime,items,total,currency:'BRL',status:'recebido',source:'site',createdAtClient:new Date().toISOString()};
  try{
   if(typeof window.royaliCreateOrder!=='function')throw new Error('Firebase não foi inicializado');
   const result=await window.royaliCreateOrder(payload);
+  window.royaliOpenOrderChat?.(result.id);
   const lines=items.map(i=>`${i.quantity}x ${i.name} ${i.size} - R$ ${(i.lineTotal).toFixed(2).replace('.',',')}`).join('\n');
   const message=`Olá! Registrei o pedido ${result.orderNumber||result.id} na Royali Batatas Recheadas.\nNome: ${name}\nWhatsApp: ${phone}\nRecebimento: ${fulfillment}${address?'\nEndereço: '+address:''}\nPagamento: ${payment}\n${timing==='scheduled'?'Agendamento: '+scheduledDate+' às '+scheduledTime+'\n':''}\n${lines}\nTotal: R$ ${total.toFixed(2).replace('.',',')}\nObservações: ${notes||'Nenhuma'}`;
-  toast('Pedido registrado! Abrindo WhatsApp para combinar o atendimento.');
+  toast('Pedido registrado! Você também pode conversar com a equipe por aqui. Abrindo WhatsApp…');
   cart=[];updateCart();closeOverlay('checkoutOverlay');
   window.open('https://wa.me/5519991879680?text='+encodeURIComponent(message),'_blank','noopener,noreferrer');
  }catch(err){console.error('Falha ao registrar pedido Royali:',err);toast('Não foi possível registrar no sistema. Tente novamente ou finalize pelo WhatsApp.');}
@@ -141,16 +142,63 @@ renderProducts();updateCart();refreshHomeOrderMode();setInterval(refreshHomeOrde
 </script>
 <script type="module">
 import { initializeApp, getApps, getApp } from 'https://www.gstatic.com/firebasejs/11.10.0/firebase-app.js';
-import { getFirestore, collection, addDoc, serverTimestamp } from 'https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js';
+import { getFirestore, collection, addDoc, serverTimestamp, onSnapshot, query, orderBy, doc } from 'https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js';
+import { getAuth, signInAnonymously, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/11.10.0/firebase-auth.js';
+import { getFunctions, httpsCallable } from 'https://www.gstatic.com/firebasejs/11.10.0/firebase-functions.js';
 const royaliFirebaseConfig={apiKey:'AIzaSyDRARZwAEkmHF5HFj6aWcUTPk9yi_nqD2Y',authDomain:'royali-batatas-recheadas.firebaseapp.com',projectId:'royali-batatas-recheadas',storageBucket:'royali-batatas-recheadas.firebasestorage.app',messagingSenderId:'81597593076',appId:'1:81597593076:web:6d28f839c0024b9cd9f5a1'};
 const royaliApp=getApps().length?getApp():initializeApp(royaliFirebaseConfig);
 const royaliDb=getFirestore(royaliApp);
+const royaliAuth=getAuth(royaliApp), royaliFunctions=getFunctions(royaliApp);
+let royaliCatalogStop=null, royaliCustomerChatStop=null, royaliLastAttentionMessage='', royaliCatalogSeen=false;
+const royaliDefaultCatalog=Array.isArray(products)?products.map(p=>({...p,prices:{...(p.prices||{})}})):[];
+function royaliSafeText(v){return String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+function royaliMergeCatalog(snapshot){
+ const defaults=royaliDefaultCatalog;
+ if(snapshot.empty){if(royaliCatalogSeen){products.splice(0,products.length);if(typeof renderProducts==='function')renderProducts();}return;}
+ royaliCatalogSeen=true;
+ const fallback=new Map(defaults.map(p=>[String(p.id),p]));
+ const cloud=snapshot.docs.map(d=>{const raw=d.data(),old=fallback.get(String(d.id))||{};return {...old,...raw,id:String(raw.id||d.id),image:raw.imageUrl||raw.image||old.image||'',prices:raw.prices&&typeof raw.prices==='object'?raw.prices:(old.prices||{}),active:raw.active!==false};});
+ products.splice(0,products.length,...cloud);
+ if(typeof renderProducts==='function')renderProducts();
+}
+try{royaliCatalogStop=onSnapshot(collection(royaliDb,'produtos'),royaliMergeCatalog,err=>console.error('Catálogo Royali indisponível; mantendo catálogo local:',err));}catch(e){console.error('Não foi possível iniciar sincronização do catálogo:',e)}
+try{onSnapshot(doc(royaliDb,'configuracoes','loja'),snap=>{if(!snap.exists())return;const d=snap.data();if(typeof d.storeName==='string'&&d.storeName.trim()){const b=document.querySelector('.brand-text b');if(b)b.textContent=d.storeName;const logo=document.querySelector('.brand-logo');if(logo)logo.alt=d.storeName;document.title=d.storeName+' | Batatas Recheadas';}if(typeof d.tagline==='string'){const t=document.querySelector('.brand-text span');if(t)t.textContent=d.tagline;}},err=>console.error('Configurações públicas não carregadas:',err));}catch(e){console.error('Não foi possível iniciar sincronização das configurações:',e)}
+function royaliChatSound(){try{const AC=window.AudioContext||window.webkitAudioContext;if(!AC)return;const c=new AC(),t=c.currentTime;[0,.2,.4].forEach((d,i)=>{const o=c.createOscillator(),g=c.createGain();o.frequency.value=i===1?1050:850;g.gain.setValueAtTime(.0001,t+d);g.gain.exponentialRampToValueAtTime(.14,t+d+.02);g.gain.exponentialRampToValueAtTime(.0001,t+d+.15);o.connect(g);g.connect(c.destination);o.start(t+d);o.stop(t+d+.16)});setTimeout(()=>c.close(),900)}catch(e){}}
+function royaliEnsureChatUI(orderId){
+ let box=document.getElementById('royaliCustomerOrderChat');
+ if(!box){box=document.createElement('section');box.id='royaliCustomerOrderChat';box.setAttribute('aria-label','Conversa com a Royali');box.style.cssText='position:fixed;right:14px;bottom:14px;z-index:999999;width:min(360px,calc(100vw - 28px));background:#fff;border:1px solid #d7e5da;border-radius:16px;box-shadow:0 12px 40px #163c292e;overflow:hidden;font:14px system-ui,sans-serif;color:#183b2b;';box.innerHTML='<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:12px 14px;background:#176b42;color:#fff"><div><b>Conversa com a Royali</b><div id="royaliChatOrderLabel" style="font-size:11px;opacity:.9"></div></div><button id="royaliChatClose" type="button" aria-label="Minimizar conversa" style="border:0;background:#ffffff24;color:white;border-radius:8px;padding:5px 9px;font-size:18px">−</button></div><div id="royaliChatMessages" aria-live="polite" style="height:190px;overflow:auto;padding:10px;background:#fbfdfb"><p style="color:#718176">Carregando conversa…</p></div><div style="display:flex;gap:6px;padding:9px;border-top:1px solid #e4ece5"><input id="royaliChatInput" maxlength="1000" placeholder="Digite sua mensagem…" aria-label="Mensagem" style="flex:1;min-width:0;border:1px solid #cad8cd;border-radius:9px;padding:10px;font:inherit"><button id="royaliChatSend" type="button" style="border:0;border-radius:9px;padding:0 13px;background:#176b42;color:#fff;font-weight:700">Enviar</button></div><div id="royaliChatStatus" style="padding:0 12px 9px;color:#718176;font-size:11px"></div>';document.body.appendChild(box);
+ document.getElementById('royaliChatClose').onclick=()=>{const m=document.getElementById('royaliChatMessages');const form=box.querySelector('#royaliChatInput').parentElement;m.hidden=!m.hidden;form.hidden=m.hidden;document.getElementById('royaliChatClose').textContent=m.hidden?'+':'−';};
+ document.getElementById('royaliChatSend').onclick=()=>royaliSendCustomerMessage(orderId);
+ document.getElementById('royaliChatInput').onkeydown=e=>{if(e.key==='Enter')royaliSendCustomerMessage(orderId)};
+ }
+ document.getElementById('royaliChatOrderLabel').textContent='Pedido #'+String(orderId).slice(-6).toUpperCase();
+ if(royaliCustomerChatStop){royaliCustomerChatStop();royaliCustomerChatStop=null;}
+ const messagesEl=document.getElementById('royaliChatMessages');
+ royaliCustomerChatStop=onSnapshot(query(collection(royaliDb,'pedidos',orderId,'mensagens'),orderBy('createdAt','asc')),snap=>{
+  messagesEl.innerHTML='';
+  if(snap.empty){messagesEl.innerHTML='<p style="color:#718176">Nenhuma mensagem ainda. Envie uma mensagem para falar com a equipe.</p>';return;}
+  snap.docs.forEach(d=>{const m=d.data(),p=document.createElement('div');p.style.cssText='margin:7px 0;padding:8px 10px;border-radius:10px;background:'+(m.role==='admin'?'#e5f5e9':'#fff')+';border:1px solid #e0e9e1;';const who=document.createElement('b');who.textContent=m.event==='call_attention'?'🔔 Royali — atenção':(m.role==='admin'?'Royali':'Você');p.appendChild(who);const body=document.createElement('div');body.style.cssText='white-space:pre-wrap;overflow-wrap:anywhere;margin-top:3px';body.textContent=String(m.text||'');p.appendChild(body);if(m.event==='call_attention'&&d.id!==royaliLastAttentionMessage){royaliLastAttentionMessage=d.id;royaliChatSound();const st=document.getElementById('royaliChatStatus');if(st)st.textContent='A equipe Royali chamou sua atenção.';}messagesEl.appendChild(p)});messagesEl.scrollTop=messagesEl.scrollHeight;
+ },err=>{const st=document.getElementById('royaliChatStatus');if(st)st.textContent='Não foi possível carregar a conversa. Verifique a conexão e as permissões.';console.error(err)});
+ localStorage.setItem('royaliLastOrderId',orderId);
+}
+async function royaliSendCustomerMessage(orderId){const input=document.getElementById('royaliChatInput'),st=document.getElementById('royaliChatStatus');if(!input)return;const text=input.value.trim();if(!text)return;if(text.length>1000){if(st)st.textContent='A mensagem deve ter até 1.000 caracteres.';return;}try{const user=royaliAuth.currentUser|| (await signInAnonymously(royaliAuth)).user;await addDoc(collection(royaliDb,'pedidos',orderId,'mensagens'),{role:'customer',customerUid:user.uid,text,createdAt:serverTimestamp()});input.value='';if(st)st.textContent='Mensagem enviada.';}catch(e){console.error(e);if(st)st.textContent='Não foi possível enviar. Confira sua conexão e tente novamente.'}}
+window.royaliOpenOrderChat=async(orderId)=>{try{if(!royaliAuth.currentUser)await signInAnonymously(royaliAuth);royaliEnsureChatUI(orderId)}catch(e){console.error('Chat do pedido indisponível:',e)}};
+onAuthStateChanged(royaliAuth,user=>{if(user){const oldOrder=localStorage.getItem('royaliLastOrderId');if(oldOrder)royaliEnsureChatUI(oldOrder);}});
+
 window.royaliCreateOrder=async(payload)=>{
  if(!payload||!payload.customer||!Array.isArray(payload.items)||payload.items.length===0)throw new Error('Pedido inválido');
- const safeItems=payload.items.map(i=>({productId:String(i.productId||''),name:String(i.name||'').slice(0,120),size:String(i.size||'').slice(0,40),unitPrice:Math.max(0,Number(i.unitPrice)||0),quantity:Math.max(1,Math.min(99,Number(i.quantity)||1)),note:String(i.note||'').slice(0,300),lineTotal:Math.max(0,Number(i.lineTotal)||0)}));
- const total=safeItems.reduce((sum,i)=>sum+i.lineTotal,0);
- const ref=await addDoc(collection(royaliDb,'pedidos'),{customer:{name:String(payload.customer.name||'').slice(0,120),phone:String(payload.customer.phone||'').slice(0,40)},fulfillment:payload.fulfillment==='Retirada'?'Retirada':'Entrega',address:String(payload.address||'').slice(0,500),payment:String(payload.payment||'Pix').slice(0,60),notes:String(payload.notes||'').slice(0,1000),timing:payload.timing==='scheduled'?'scheduled':'immediate',scheduledDate:String(payload.scheduledDate||''),scheduledTime:String(payload.scheduledTime||''),items:safeItems,total,currency:'BRL',status:'recebido',source:'site',createdAt:serverTimestamp(),createdAtClient:String(payload.createdAtClient||new Date().toISOString())});
- return {id:ref.id,orderNumber:ref.id.slice(-6).toUpperCase()};
+ if(!royaliAuth.currentUser)await signInAnonymously(royaliAuth);
+ const createRoyaliOrder=httpsCallable(royaliFunctions,'createRoyaliOrder');
+ const result=await createRoyaliOrder({
+  customer:{name:String(payload.customer.name||'').slice(0,120),phone:String(payload.customer.phone||'').slice(0,40)},
+  fulfillment:payload.fulfillment==='Retirada'?'Retirada':'Entrega',
+  address:String(payload.address||'').slice(0,500),payment:String(payload.payment||'Pix').slice(0,60),
+  notes:String(payload.notes||'').slice(0,1000),timing:payload.timing==='scheduled'?'scheduled':'immediate',
+  scheduledDate:String(payload.scheduledDate||''),scheduledTime:String(payload.scheduledTime||''),
+  items:payload.items.map(i=>({productId:String(i.productId||''),size:String(i.size||''),quantity:Math.max(1,Math.min(99,Number(i.quantity)||1)),note:String(i.note||'').slice(0,300)})),
+  createdAtClient:String(payload.createdAtClient||new Date().toISOString())
+ });
+ return result.data;
 };
 </script>
 </body></html>
