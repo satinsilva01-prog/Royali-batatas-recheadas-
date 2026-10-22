@@ -366,7 +366,7 @@ const cfg={apiKey:'AIzaSyDRARZwAEkmHF5HFj6aWcUTPk9yi_nqD2Y',authDomain:'royali-b
 const app=getApps().length?getApp():initializeApp(cfg),db=getFirestore(app);
 const text=document.getElementById('royaliPublicStoreText'),dot=document.getElementById('royaliPublicStoreDot'),badge=document.getElementById('royaliPublicStoreStatus');
 function show(open,label){if(text)text.textContent=label||(open?'Loja aberta · recebendo pedidos':'Loja fechada · não estamos recebendo pedidos');if(dot)dot.style.background=open?'#16834a':'#b42318';if(badge){badge.style.color=open?'#176b42':'#a11b1b';badge.style.background=open?'#edf8f0':'#fff0ef';badge.style.border='1px solid '+(open?'#c8e8d1':'#f1c8c5');badge.style.borderRadius='999px';badge.style.width='fit-content';badge.style.padding='8px 14px';}}
-show(true,'Consultando funcionamento da loja…');
-onSnapshot(doc(db,'configuracoes','loja'),snap=>{const d=snap.exists()?snap.data():{};show(d.storeOpen!==false);},err=>{console.error('Royali: não foi possível ler o estado da loja:',err);show(true,'Status da loja indisponível · confirme antes de pedir');});
+show(false,'Consultando funcionamento da loja…');
+onSnapshot(doc(db,'configuracoes','loja'),snap=>{if(!snap.exists()){show(false,'Status da loja indisponível · tente novamente');return;}const d=snap.data();if(typeof d.storeOpen!=='boolean'){show(false,'Status da loja indisponível · tente novamente');return;}show(d.storeOpen);},err=>{console.error('Royali: não foi possível ler o estado da loja:',err);show(false,'Status da loja indisponível · confirme antes de pedir');});
 </script>
 </body></html>
