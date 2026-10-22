@@ -189,7 +189,7 @@ function royaliMergeCatalog(snapshot){
  if(snapshot.empty){royaliCatalogSeen=true;products.splice(0,products.length);if(typeof renderProducts==='function')renderProducts();return;}
  royaliCatalogSeen=true;
  const fallback=new Map(defaults.map(p=>[String(p.id),p]));
- const cloud=snapshot.docs.map(d=>{const raw=d.data(),old=fallback.get(String(d.id))||{};return {...old,...raw,id:String(raw.id||d.id),image:raw.imageUrl||raw.image||old.image||'',prices:raw.prices&&typeof raw.prices==='object'?raw.prices:(old.prices||{}),active:raw.active!==false};});
+ const cloud=snapshot.docs.map(d=>{const raw=d.data(),old=fallback.get(String(d.id))||{};return {...old,...raw,id:String(raw.id||d.id),image:(['coca','cocazero','fanta','guarana'].includes(String(raw.id||d.id))?old.image:(raw.imageUrl||raw.image||old.image||'')),prices:raw.prices&&typeof raw.prices==='object'?raw.prices:(old.prices||{}),active:raw.active!==false};});
  products.splice(0,products.length,...cloud);
  if(typeof renderProducts==='function')renderProducts();
 }
