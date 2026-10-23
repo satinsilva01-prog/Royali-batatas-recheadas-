@@ -535,4 +535,20 @@ onSnapshot(doc(db,'configuracoes','loja'),snap=>{const d=snap.exists()?snap.data
   });
 })();
 </script>
+
+<style id="royali-chat-recovery-style">
+#royaliCustomerOrderChat{z-index:2147483000!important;max-height:calc(100dvh - 20px);overflow-y:auto!important}
+#royaliChatRecoveryButton{position:fixed;right:14px;bottom:14px;z-index:2147482990;border:0;border-radius:24px;background:#176b42;color:white;padding:13px 17px;box-shadow:0 6px 22px #0004;font-weight:800;font-size:14px;cursor:pointer}
+</style>
+<script id="royali-chat-recovery">
+(function(){
+ function orderId(){try{return window.royaliActiveChatOrderId||localStorage.getItem('royaliLastOrderId')||localStorage.getItem('royaliPixOrderId')||window.royaliCurrentPixOrderId||''}catch(e){return window.royaliActiveChatOrderId||window.royaliCurrentPixOrderId||''}}
+ function button(){let b=document.getElementById('royaliChatRecoveryButton');if(!b){b=document.createElement('button');b.id='royaliChatRecoveryButton';b.type='button';b.textContent='💬 Conversa do pedido';b.onclick=function(){open(true)};document.body.appendChild(b)}const id=orderId();b.style.display=id?'block':'none';const chat=document.getElementById('royaliCustomerOrderChat');if(chat&&chat.style.display!=='none')b.style.display='none';}
+ function open(manual){const id=orderId();if(!id)return; if(typeof window.royaliOpenOrderChat==='function'){Promise.resolve(window.royaliOpenOrderChat(id)).then(()=>{const chat=document.getElementById('royaliCustomerOrderChat');if(chat){chat.style.setProperty('display','block','important');chat.style.visibility='visible';chat.style.opacity='1';chat.style.zIndex='2147483000';const msg=chat.querySelector('#royaliChatMessages');if(msg)msg.hidden=false;const input=chat.querySelector('#royaliChatInput');if(input&&input.parentElement)input.parentElement.hidden=false;}button()}).catch(e=>console.error('Royali chat:',e))}else if(manual){alert('A conversa ainda está carregando. Aguarde alguns segundos e tente novamente.')}}
+ document.addEventListener('DOMContentLoaded',()=>{button();setTimeout(()=>{button();if(document.getElementById('pixPaymentOverlay')?.classList.contains('open'))open(false)},900);setTimeout(button,3000)});
+ document.addEventListener('click',e=>{if(e.target.closest('#royaliFinalizeOrderButton'))setTimeout(()=>{button();open(false)},1800);});
+ setInterval(button,2500);
+ window.royaliRestoreOrderChat=()=>open(true);
+})();
+</script>
 </body></html>
