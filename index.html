@@ -303,7 +303,7 @@ function royaliEnsureChatUI(orderId){
  getDoc(doc(royaliDb,'pedidos',orderId)).then(orderSnap=>{
   if(royaliAuth.currentUser?.uid!==chatOwner.uid)return;
   if(!orderSnap.exists()||orderSnap.data().customerUid!==chatOwner.uid){
-   messagesEl.textContent='Esta conversa não pertence à sua conta.';
+   messagesEl.textContent='Esta conversa não pertence à conta conectada. Confira se está usando a mesma conta que enviou o pedido e se o número do pedido corresponde.';
    try{localStorage.removeItem('royaliLastOrderId');}catch(_){}return;
   }
  window.royaliCustomerOrderStatusStop=onSnapshot(doc(royaliDb,'pedidos',orderId),orderSnapshot=>{
@@ -330,7 +330,7 @@ function royaliEnsureChatUI(orderId){
   snap.docs.forEach(d=>{const m=d.data(),p=document.createElement('div');p.style.cssText='margin:7px 0;padding:8px 10px;border-radius:10px;background:'+(m.role==='admin'?'#e5f5e9':'#fff')+';border:1px solid #e0e9e1;';const who=document.createElement('b');who.textContent=m.event==='call_attention'?'🔔 Royali — atenção':(m.role==='admin'?'Royali':'Você');p.appendChild(who);const body=document.createElement('div');body.style.cssText='white-space:pre-wrap;overflow-wrap:anywhere;margin-top:3px';const msgText=String(m.text||'');const linkPattern=/https:\/\/[^\s<>"']+/g;let last=0;for(const match of msgText.matchAll(linkPattern)){const idx=match.index||0;if(idx>last)body.appendChild(document.createTextNode(msgText.slice(last,idx)));let url=match[0].replace(/[),.;!?]+$/,'');try{const parsed=new URL(url);if(parsed.protocol==='https:'){const a=document.createElement('a');a.href=parsed.href;a.target='_blank';a.rel='noopener noreferrer';a.textContent=url;a.style.cssText='color:#176e4e;text-decoration:underline;font-weight:700;overflow-wrap:anywhere';body.appendChild(a);}else body.appendChild(document.createTextNode(url));}catch(_){body.appendChild(document.createTextNode(url));}last=idx+match[0].length;}if(last<msgText.length)body.appendChild(document.createTextNode(msgText.slice(last)));
   // Destaque acessível somente para a mensagem de cobrança Pix enviada pela Royali.
   if(m.role==='admin' && msgText.includes('Pagamento via Pix') && msgText.includes('Chave Pix (copie e cole):')){
-    const pixMatch=msgText.match(/Chave Pix \(copie e cole\):\s*\n([^\n]+)/);
+    const pixMatch=msgText.match(/Chave Pix \(copie e cole\):[ \t]*\r?\n([^\r\n]+)/);
     const totalMatch=msgText.match(/\*?TOTAL A PAGAR:\s*(R\$\s*[\d.,]+)/);
     if(pixMatch){
       body.textContent='';
@@ -346,9 +346,9 @@ function royaliEnsureChatUI(orderId){
     }
   }
   if(m.attachmentData&&typeof m.attachmentData==='string'&&m.attachmentData.startsWith('data:')){const link=document.createElement('a');link.href=m.attachmentData;link.download=String(m.attachmentName||'anexo');link.textContent='📎 Abrir / baixar '+String(m.attachmentName||'anexo');link.style.cssText='display:block;margin-top:8px;color:#176b42;font-weight:700';body.appendChild(link);}p.appendChild(body);if(m.event==='call_attention'&&d.id!==royaliLastAttentionMessage){royaliLastAttentionMessage=d.id;royaliChatSound();const st=document.getElementById('royaliChatStatus');if(st)st.textContent='A equipe Royali chamou sua atenção.';}messagesEl.appendChild(p)});messagesEl.scrollTop=messagesEl.scrollHeight;
- },err=>{const st=document.getElementById('royaliChatStatus');if(st)st.textContent='Não foi possível carregar a conversa. Verifique a conexão e as permissões.';console.error(err)});
+ },err=>{const st=document.getElementById('royaliChatStatus');if(st)st.textContent='Erro ao receber mensagens deste pedido: '+(err?.code||err?.message||'verifique a conexão');console.error(err)});
  localStorage.setItem('royaliLastOrderId',orderId);
- }).catch(error=>{console.error('Falha ao verificar pedido:',error);messagesEl.textContent='Não foi possível verificar a permissão desta conversa.';});
+ }).catch(error=>{console.error('Falha ao verificar pedido:',error);messagesEl.textContent='Não foi possível verificar este pedido: '+(error?.code||error?.message||'erro desconhecido');});
 }
 async function royaliSendCustomerMessage(orderId){const input=document.getElementById('royaliChatInput'),st=document.getElementById('royaliChatStatus');if(!input)return;const text=input.value.trim();if(!text)return;if(text.length>1000){if(st)st.textContent='A mensagem deve ter até 1.000 caracteres.';return;}try{const user=royaliAuth.currentUser;if(!user||user.isAnonymous)throw new Error('Entre na sua conta para enviar mensagens.');const orderCheck=await getDoc(doc(royaliDb,'pedidos',orderId));if(!orderCheck.exists()||orderCheck.data().customerUid!==user.uid||['finalizado','cancelado'].includes(orderCheck.data().status))throw new Error('Chat encerrado ou pedido indisponível.');await addDoc(collection(royaliDb,'pedidos',orderId,'mensagens'),{role:'customer',customerUid:user.uid,text:text.slice(0,1000),createdAt:serverTimestamp()});input.value='';if(st)st.textContent='Mensagem enviada.';}catch(e){console.error(e);if(st)st.textContent='Não foi possível enviar. Confira sua conexão e tente novamente.'}}
 window.royaliCheckChatOrder=async(orderId)=>{
