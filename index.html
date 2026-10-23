@@ -226,14 +226,20 @@ window.royaliOpenOrderHistory=()=>{
   const host=document.getElementById('royaliHistoryList');if(!host)return;host.replaceChildren();
   const docs=snap.docs.slice().sort((a,b)=>{const ts=x=>x.data().createdAt?.toMillis?.()||Date.parse(x.data().createdAtClient||'')||0;return ts(b)-ts(a)});
   if(!docs.length){host.textContent='Você ainda não tem pedidos registrados.';return;}
-  docs.forEach(d=>{const o=d.data(),status=String(o.status||'aguardando_pagamento'),closed=['finalizado','entregue','cancelado'].includes(status.toLowerCase());const card=document.createElement('div');card.style.cssText='border:1px solid #e3e8e4;border-radius:12px;padding:12px;margin:9px 0';const heading=document.createElement('b');heading.textContent='Pedido #'+d.id.slice(-6).toUpperCase();card.appendChild(heading);const info=document.createElement('p');info.style.cssText='margin:7px 0;font-size:12px';info.textContent='Status: '+status.replaceAll('_',' ')+' • '+Number(o.total||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});card.appendChild(info);if(status==='cancelado'){const cancelInfo=document.createElement('p');cancelInfo.style.cssText='font-size:12px;color:#9e2525';cancelInfo.textContent='Cancelado por: '+(o.cancelledBy||'Não informado')+' • Motivo: '+(o.cancellationReason||'Não informado')+' • Data: '+(o.cancelledAt?.toDate?.()?.toLocaleString('pt-BR')||'Não informada');card.appendChild(cancelInfo);if(o.paymentStatus==='confirmado'){const refund=document.createElement('p');refund.textContent='Pagamento confirmado anteriormente: consulte a Royali sobre o reembolso.';card.appendChild(refund);}}const details=document.createElement('div');details.style.cssText='font-size:12px;color:#5d665f';details.textContent=(o.items||[]).map(i=>(i.quantity||i.qty||1)+'x '+(i.name||'Produto')).join(' · ');card.appendChild(details);if(!closed){const btn=document.createElement('button');btn.textContent='Acompanhar / conversar';btn.style.cssText='margin-top:9px;padding:9px;border:0;border-radius:8px;background:#176b42;color:white';btn.onclick=()=>{panel.querySelector('#royaliHistoryClose').click();window.royaliOpenOrderChat?.(d.id)};card.appendChild(btn);if(['aguardando_pagamento','recebido','confirmado','preparando','em_producao','saiu_entrega','saiu_para_entrega'].includes(status)){const cancel=document.createElement('button');cancel.type='button';cancel.textContent='✕ Cancelar pedido';cancel.style.cssText='margin:9px 0 0 8px;padding:9px;border:1px solid #c77;border-radius:8px;background:#fff2f2;color:#982c2c';cancel.onclick=()=>window.royaliCancelCustomerOrder(d.id);if(o.paymentStatus==='confirmado'){cancel.textContent='✕ Cancelamento indisponível';cancel.style.opacity='.65';}card.appendChild(cancel);}}else{const ended=document.createElement('p');ended.textContent='Pedido encerrado · conversa fechada';ended.style.cssText='font-size:11px;color:#777';card.appendChild(ended)}host.appendChild(card)});
+  docs.forEach(d=>{const o=d.data(),status=String(o.status||'aguardando_pagamento'),closed=['finalizado','entregue','cancelado'].includes(status.toLowerCase());const card=document.createElement('div');card.style.cssText='border:1px solid #e3e8e4;border-radius:12px;padding:12px;margin:9px 0';const heading=document.createElement('b');heading.textContent='Pedido #'+d.id.slice(-6).toUpperCase();card.appendChild(heading);const info=document.createElement('p');info.style.cssText='margin:7px 0;font-size:12px';info.textContent='Status: '+status.replaceAll('_',' ')+' • '+Number(o.total||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});card.appendChild(info);if(status==='cancelado'){const cancelInfo=document.createElement('p');cancelInfo.style.cssText='font-size:12px;color:#9e2525';cancelInfo.textContent='Cancelado por: '+(o.cancelledBy||'Não informado')+' • Motivo: '+(o.cancellationReason||'Não informado')+' • Data: '+(o.cancelledAt?.toDate?.()?.toLocaleString('pt-BR')||'Não informada');card.appendChild(cancelInfo);if(o.paymentStatus==='confirmado'){const refund=document.createElement('p');refund.textContent='Pagamento confirmado anteriormente: consulte a Royali sobre o reembolso.';card.appendChild(refund);}}const details=document.createElement('div');details.style.cssText='font-size:12px;color:#5d665f';details.textContent=(o.items||[]).map(i=>(i.quantity||i.qty||1)+'x '+(i.name||'Produto')).join(' · ');card.appendChild(details);if(o.paymentStatus==='confirmado'){
+ const receipt=document.createElement('button');receipt.type='button';receipt.textContent='🧾 Ver recibo de pagamento';receipt.style.cssText='display:block;margin-top:10px;padding:10px 12px;border:1px solid #d6a64b;border-radius:9px;background:#fffaf0;color:#81571f;font-weight:750';
+ receipt.onclick=()=>{const escReceipt=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));const moneyReceipt=v=>Number(v||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});const logo=document.querySelector('.brand-logo')?.src||'';const fee=Number(o.deliveryFee??o.delivery?.fee??0)||0;const total=Number(o.total)||0;const subtotal=Number(o.subtotal??total-fee)||0;const date=o.paymentConfirmedAt?.toDate?.()?.toLocaleString('pt-BR')||o.createdAt?.toDate?.()?.toLocaleString('pt-BR')||'Não informada';const items=(o.items||[]).map(i=>{const q=Number(i.qty??i.quantity??1)||1;return `<tr><td>${q}x ${escReceipt(i.name||i.title||'Produto')}</td><td>${moneyReceipt(i.lineTotal??i.total??(Number(i.price??i.unitPrice)||0)*q)}</td></tr>`}).join('');const html=`<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Recibo Royali #${escReceipt(d.id.slice(-6).toUpperCase())}</title><style>body{font:15px Arial,sans-serif;color:#302b24;background:#f4f1eb;padding:24px}main{max-width:620px;margin:auto;background:white;padding:30px;border-radius:14px;box-shadow:0 4px 25px #0001}.logo{width:120px;height:120px;object-fit:contain;display:block;margin:auto}h1,h2{text-align:center;margin:8px}h1{font-size:22px;color:#80551b}h2{font-size:14px;letter-spacing:2px;color:#957239}.line{border-top:2px solid #d6a64b;margin:22px 0}table{width:100%;border-collapse:collapse}td{padding:10px 3px;border-bottom:1px solid #eee}td:last-child{text-align:right}.total{background:#fff8e9;font-size:20px;font-weight:bold;color:#80551b}.actions{text-align:center;margin:18px}button{background:#80551b;color:white;padding:12px 22px;border:0;border-radius:9px}@media print{body{background:white;padding:0}main{box-shadow:none;padding:10px}.actions{display:none}}</style></head><body><main><img class="logo" src="${logo}"><h1>Royali Batatas Recheadas</h1><h2>RECIBO DE PAGAMENTO</h2><div class="line"></div><p><b>Pedido:</b> #${escReceipt(d.id.slice(-6).toUpperCase())}</p><p><b>Cliente:</b> ${escReceipt(o.customer?.name||o.customerName||o.name||'Não informado')}</p><p><b>Data:</b> ${escReceipt(date)}</p><p><b>Pagamento:</b> ${escReceipt(o.payment||o.paymentMethod||'Não informado')}</p><div class="line"></div><table><thead><tr><th style="text-align:left">Descrição dos itens</th><th style="text-align:right">Valor</th></tr></thead><tbody>${items}<tr><td>Subtotal</td><td>${moneyReceipt(subtotal)}</td></tr><tr><td>Taxa de entrega</td><td>${moneyReceipt(fee)}</td></tr><tr class="total"><td>TOTAL PAGO</td><td>${moneyReceipt(total)}</td></tr></tbody></table><p style="text-align:center;color:#80551b">Pagamento confirmado • Obrigado pela preferência!</p><p style="text-align:center;font-size:11px;color:#777">Comprovante de recebimento de pagamento. Não substitui nota fiscal.</p></main><div class="actions"><button onclick="window.print()">Imprimir / Salvar PDF</button></div></body></html>`;const win=window.open('','_blank');if(!win){alert('Permita abrir uma nova aba para visualizar o recibo.');return;}win.document.open();win.document.write(html);win.document.close();};card.appendChild(receipt);
+}if(!closed){const btn=document.createElement('button');btn.textContent='Acompanhar / conversar';btn.style.cssText='margin-top:9px;padding:9px;border:0;border-radius:8px;background:#176b42;color:white';btn.onclick=()=>{panel.querySelector('#royaliHistoryClose').click();window.royaliOpenOrderChat?.(d.id)};card.appendChild(btn);if(['aguardando_pagamento','recebido','confirmado','preparando','em_producao','saiu_entrega','saiu_para_entrega'].includes(status)){const cancel=document.createElement('button');cancel.type='button';cancel.textContent='✕ Cancelar pedido';cancel.style.cssText='margin:9px 0 0 8px;padding:9px;border:1px solid #c77;border-radius:8px;background:#fff2f2;color:#982c2c';cancel.onclick=()=>window.royaliCancelCustomerOrder(d.id);if(o.paymentStatus==='confirmado'){cancel.textContent='✕ Cancelamento indisponível';cancel.style.opacity='.65';}card.appendChild(cancel);}}else{const ended=document.createElement('p');ended.textContent='Pedido encerrado · conversa fechada';ended.style.cssText='font-size:11px;color:#777';card.appendChild(ended)}host.appendChild(card)});
  },err=>{const host=document.getElementById('royaliHistoryList');if(host)host.textContent='Não foi possível carregar o histórico. '+(err?.message||'');});
 };
 function royaliCloseCompletedOrder(orderId){
  const popup=document.getElementById('pixPaymentOverlay');if(popup?.classList.contains('open'))closeOverlay('pixPaymentOverlay');
  const checkout=document.getElementById('checkoutOverlay');if(checkout?.classList.contains('open'))closeOverlay('checkoutOverlay');
  const chat=document.getElementById('royaliCustomerOrderChat');if(chat)chat.style.display='none';
- try{if(localStorage.getItem('royaliLastOrderId')===orderId)localStorage.removeItem('royaliLastOrderId')}catch(_){}
+ if(window.royaliActiveChatOrderId===orderId)window.royaliActiveChatOrderId='';
+ if(window.royaliCurrentPixOrderId===orderId)window.royaliCurrentPixOrderId='';
+ try{for(const key of ['royaliLastOrderId','royaliPixOrderId'])if(localStorage.getItem(key)===orderId)localStorage.removeItem(key)}catch(_){}
+ document.getElementById('royaliChatRecoveryButton')?.style.setProperty('display','none');
  if(!window.royaliAutoHistoryClosedOrders)window.royaliAutoHistoryClosedOrders=new Set();
  if(!window.royaliAutoHistoryClosedOrders.has(orderId)){window.royaliAutoHistoryClosedOrders.add(orderId);window.royaliOpenOrderHistory?.();}
 }
@@ -307,6 +313,15 @@ function royaliEnsureChatUI(orderId){
  }).catch(error=>{console.error('Falha ao verificar pedido:',error);messagesEl.textContent='Não foi possível verificar a permissão desta conversa.';});
 }
 async function royaliSendCustomerMessage(orderId){const input=document.getElementById('royaliChatInput'),st=document.getElementById('royaliChatStatus');if(!input)return;const text=input.value.trim();if(!text)return;if(text.length>1000){if(st)st.textContent='A mensagem deve ter até 1.000 caracteres.';return;}try{const user=royaliAuth.currentUser;if(!user||user.isAnonymous)throw new Error('Entre na sua conta para enviar mensagens.');const orderCheck=await getDoc(doc(royaliDb,'pedidos',orderId));if(!orderCheck.exists()||orderCheck.data().customerUid!==user.uid||['finalizado','cancelado'].includes(orderCheck.data().status))throw new Error('Chat encerrado ou pedido indisponível.');await addDoc(collection(royaliDb,'pedidos',orderId,'mensagens'),{role:'customer',customerUid:user.uid,text:text.slice(0,1000),createdAt:serverTimestamp()});input.value='';if(st)st.textContent='Mensagem enviada.';}catch(e){console.error(e);if(st)st.textContent='Não foi possível enviar. Confira sua conexão e tente novamente.'}}
+window.royaliCheckChatOrder=async(orderId)=>{
+ const user=royaliAuth.currentUser;
+ if(!orderId||!user||user.isAnonymous)return false;
+ const snap=await getDoc(doc(royaliDb,'pedidos',orderId));
+ if(!snap.exists()||snap.data().customerUid!==user.uid)return false;
+ const status=String(snap.data().status||'').trim().toLowerCase();
+ if(['finalizado','entregue','cancelado','concluido','concluído'].includes(status)){royaliCloseCompletedOrder(orderId);return false;}
+ return true;
+};
 window.royaliOpenOrderChat=async(orderId)=>{try{if(!royaliAuth.currentUser||royaliAuth.currentUser.isAnonymous){royaliCustomerAuthStatus('Entre na sua conta para abrir a conversa do pedido.');return;}royaliEnsureChatUI(orderId)}catch(e){console.error('Chat do pedido indisponível:',e)}};
 onAuthStateChanged(royaliAuth,user=>{window.royaliSetCheckoutAuth?.(!!(user&&!user.isAnonymous));document.body.dataset.royaliAuthenticated=String(!!(user&&!user.isAnonymous));if(user&&!user.isAnonymous){const oldOrder=localStorage.getItem('royaliLastOrderId');if(oldOrder)royaliEnsureChatUI(oldOrder);}});
 
@@ -542,13 +557,41 @@ onSnapshot(doc(db,'configuracoes','loja'),snap=>{const d=snap.exists()?snap.data
 </style>
 <script id="royali-chat-recovery">
 (function(){
- function orderId(){try{return window.royaliActiveChatOrderId||localStorage.getItem('royaliLastOrderId')||localStorage.getItem('royaliPixOrderId')||window.royaliCurrentPixOrderId||''}catch(e){return window.royaliActiveChatOrderId||window.royaliCurrentPixOrderId||''}}
- function button(){let b=document.getElementById('royaliChatRecoveryButton');if(!b){b=document.createElement('button');b.id='royaliChatRecoveryButton';b.type='button';b.textContent='💬 Conversa do pedido';b.onclick=function(){open(true)};document.body.appendChild(b)}const id=orderId();b.style.display=id?'block':'none';const chat=document.getElementById('royaliCustomerOrderChat');if(chat&&chat.style.display!=='none')b.style.display='none';}
- function open(manual){const id=orderId();if(!id)return; if(typeof window.royaliOpenOrderChat==='function'){Promise.resolve(window.royaliOpenOrderChat(id)).then(()=>{const chat=document.getElementById('royaliCustomerOrderChat');if(chat){chat.style.setProperty('display','block','important');chat.style.visibility='visible';chat.style.opacity='1';chat.style.zIndex='2147483000';const msg=chat.querySelector('#royaliChatMessages');if(msg)msg.hidden=false;const input=chat.querySelector('#royaliChatInput');if(input&&input.parentElement)input.parentElement.hidden=false;}button()}).catch(e=>console.error('Royali chat:',e))}else if(manual){alert('A conversa ainda está carregando. Aguarde alguns segundos e tente novamente.')}}
- document.addEventListener('DOMContentLoaded',()=>{button();setTimeout(()=>{button();if(document.getElementById('pixPaymentOverlay')?.classList.contains('open'))open(false)},900);setTimeout(button,3000)});
- document.addEventListener('click',e=>{if(e.target.closest('#royaliFinalizeOrderButton'))setTimeout(()=>{button();open(false)},1800);});
- setInterval(button,2500);
- window.royaliRestoreOrderChat=()=>open(true);
+ let checking=false,validated='',lastCheck=0;
+ const closed=new Set();
+ function orderId(){try{return window.royaliActiveChatOrderId||localStorage.getItem('royaliLastOrderId')||localStorage.getItem('royaliPixOrderId')||window.royaliCurrentPixOrderId||''}catch(e){return window.royaliActiveChatOrderId||''}}
+ function button(){let b=document.getElementById('royaliChatRecoveryButton');if(!b){b=document.createElement('button');b.id='royaliChatRecoveryButton';b.type='button';b.textContent='💬 Conversa do pedido';b.onclick=()=>open();document.body.appendChild(b)}return b}
+ async function refresh(force){
+  const b=button(),id=orderId();
+  if(!id||closed.has(id)){b.style.display='none';return false}
+  if(typeof window.royaliCheckChatOrder!=='function'){b.style.display='none';return false}
+  if(checking)return false;
+  if(force||validated!==id||Date.now()-lastCheck>4000){
+   checking=true;
+   try{if(!await window.royaliCheckChatOrder(id)){closed.add(id);validated='';b.style.display='none';return false}validated=id;lastCheck=Date.now()}
+   catch(e){console.warn('Não foi possível confirmar o pedido:',e);b.style.display='none';return false}
+   finally{checking=false}
+  }
+  const chat=document.getElementById('royaliCustomerOrderChat');
+  b.style.display=chat&&chat.style.display!=='none'?'none':'block';
+  return true;
+ }
+ async function open(){
+  const id=orderId();if(!id||!await refresh(true))return;
+  if(typeof window.royaliOpenOrderChat!=='function')return;
+  await window.royaliOpenOrderChat(id);
+  if(closed.has(id)||!await refresh(true))return;
+  const chat=document.getElementById('royaliCustomerOrderChat');
+  if(chat){chat.style.display='block';chat.style.visibility='visible';chat.style.opacity='1';chat.style.zIndex='2147483000';
+   const msg=chat.querySelector('#royaliChatMessages');if(msg)msg.hidden=false;
+   const input=chat.querySelector('#royaliChatInput');if(input?.parentElement)input.parentElement.hidden=false;
+  }
+  button().style.display='none';
+ }
+ document.addEventListener('DOMContentLoaded',()=>{refresh(true);setTimeout(()=>refresh(true),1000)});
+ document.addEventListener('click',e=>{if(e.target.closest('#royaliFinalizeOrderButton'))setTimeout(()=>refresh(true),1800)});
+ setInterval(()=>refresh(true),5000);
+ window.royaliRestoreOrderChat=open;
 })();
 </script>
 </body></html>
