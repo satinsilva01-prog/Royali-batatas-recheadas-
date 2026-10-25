@@ -117,6 +117,10 @@ window.royaliClientIncomingAttention=function(){
 #royaliCustomerOrderChat[style*="display: none"],#royaliCustomerOrderChat[style*="display:none"]{display:none!important}
 #royaliCustomerOrderChat #royaliChatMessages{flex:1 1 auto!important;height:auto!important;min-height:90px;overflow-y:auto!important;overscroll-behavior:contain}
 #royaliCustomerOrderChat #royaliCustomerOrderProgress{flex:0 0 auto;max-height:28dvh;overflow-y:auto}
+#royaliCustomerOrderChat > div:first-child{flex:0 0 auto!important}
+#royaliCustomerOrderChat #royaliChatMessages{min-height:0!important;flex:1 1 0%!important;overflow-y:scroll!important;overflow-x:hidden!important;-webkit-overflow-scrolling:touch!important;touch-action:pan-y!important;overscroll-behavior-y:contain!important;position:relative}
+#royaliCustomerOrderChat #royaliCustomerOrderProgress{flex-shrink:0!important}
+#royaliCustomerOrderChat #royaliPaymentWaitingNotice{flex-shrink:0!important}
 #royaliCustomerOrderChat #royaliChatInput{font-size:16px!important}
 </style><style id="royaliFloatingBagStyles">
 #royaliFloatingBag{position:fixed;left:12px;right:12px;bottom:calc(78px + env(safe-area-inset-bottom,0px));z-index:11000;display:none;align-items:center;gap:12px;border:1px solid #dfbc67;border-radius:18px;padding:12px 14px;background:#fff9e9;color:#38230b;box-shadow:0 7px 26px rgba(0,0,0,.22);cursor:pointer;text-align:left;width:calc(100% - 24px);max-width:550px;margin:auto;font:inherit;animation:royaliBagEnter .32s ease-out}
